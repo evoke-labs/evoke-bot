@@ -1,0 +1,31 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model PointAllocation {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  allocatedBy String
+  allocatedTo String
+  points Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  issue Issue @relation(fields: [issueId], references: [id])
+  issueId String @db.ObjectId
+}
+
+model Issue {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+  githubId Int @unique
+  assigneeId Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pointAllocations PointAllocation[]
+}
