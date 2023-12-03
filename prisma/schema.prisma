@@ -10,15 +10,36 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum PointAllocationType {
+  Assignee
+  Reviewer
+  Helper
+  Quality
+  CleanUp
+  BestPractices
+  Documentation
+  Testing
+  Performance
+  Accessibility
+  Security
+  Other
+}
+
 model PointAllocation {
   id String @id @default(auto()) @map("_id") @db.ObjectId
-  allocatedBy String
-  allocatedTo String
+  requestedBy String?
+  allocatedTo String?
+  approvedBy String?
+  rejectedBy String?
+  type PointAllocationType
   points Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  approvedAt DateTime?
+  rejectedAt DateTime?
   issue Issue @relation(fields: [issueId], references: [id])
   issueId String @db.ObjectId
+
 }
 
 model Issue {
