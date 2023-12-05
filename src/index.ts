@@ -3,8 +3,18 @@ import {Probot} from "probot";
 import {PrismaClient} from "@prisma/client";
 import {Context} from "probot/lib/context";
 import {PointAllocationType} from ".prisma/client";
+import moment from "moment-timezone";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+    log: ['query', 'info', 'warn', 'error'],
+});
+
+const overview_issues = [
+    {
+        issue_number: 5,
+        repo: 'fund-management'
+    }
+]
 
 const labelsWithColors = [
     {
@@ -148,6 +158,35 @@ const checkIfCommenterIsAdmin = (context: Context<"issue_comment.created">) =>
 const checkIfCommenterIsAssignee = (context: Context<"issue_comment.created">) =>
     context.payload.issue.assignee.login == context.payload.comment.user.login
 
+const regenerateOverview = async (context: Context<"issues.assigned" | "issue_comment.created" | "issues.reopened">) => {
+    const previousWeekMonday = moment().subtract(1, 'weeks').startOf('isoWeek')
+    const latePreviousWeekMonday = moment().subtract(2, 'weeks').startOf('isoWeek')
+    const thisWeekMonday = moment().startOf('isoWeek')
+
+    const checkWeekBracket = (date: Date) => {
+        if (moment(date).isAfter(thisWeekMonday)) return 0
+        if (moment(date).isAfter(previousWeekMonday)) return 1
+        return 2
+    }
+
+    const pointsThisWeek = await prisma.pointAllocation.findMany({
+        where: {
+            approvedAt: {
+                gt: latePreviousWeekMonday.toDate(),
+            }
+        }
+    })
+    const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => ({ ...a, [checkWeekBracket(pa.approvedAt)]: { ...(a[checkWeekBracket(pa.approvedAt)] ?? {}), [pa.allocatedTo]: pa.points + (a[checkWeekBracket(pa.approvedAt)]?.[pa.allocatedTo] ?? 0) } }), {})
+    console.log('pointsByWeekAndAllocatedTo', pointsByWeekAndAllocatedTo)
+    // const issue = await context.octokit.issues.get({
+    //     owner: 'evoke-labs',
+    //     issue_number: 5,
+    //     repo: 'fund-management'
+    // })
+    // console.log('issue', issue)
+}
+
+
 
 const checkAndHandlePointRevaluationNeededLabel = async (
     context: Context<"issue_comment.created">,
@@ -251,6 +290,9 @@ export = (app: Probot) => {
                 });
             }
             switch (parts[1]) {
+                case "regenerate-overview":
+                    await regenerateOverview(context)
+                    break;
                 case "fix":
                     await checkAndHandlePointRevaluationNeededLabel(context);
                     console.log("fixed");
