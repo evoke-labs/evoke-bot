@@ -345,6 +345,7 @@ export = (app: Probot) => {
                 labels: ["need-point-revaluation"],
             });
         }
+        await issueOverview(context)
     });
     app.on("issue_comment.created", async (context) => {
         if (context.isBot) return;
