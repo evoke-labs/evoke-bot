@@ -171,19 +171,45 @@ const regenerateOverview = async (context: Context<"issues.assigned" | "issue_co
 
     const pointsThisWeek = await prisma.pointAllocation.findMany({
         where: {
-            approvedAt: {
-                gt: latePreviousWeekMonday.toDate(),
-            }
+            // approvedAt: {
+            //     gt: latePreviousWeekMonday.toDate(),
+            // }
         }
     })
     const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => ({ ...a, [checkWeekBracket(pa.approvedAt)]: { ...(a[checkWeekBracket(pa.approvedAt)] ?? {}), [pa.allocatedTo]: pa.points + (a[checkWeekBracket(pa.approvedAt)]?.[pa.allocatedTo] ?? 0) } }), {})
     console.log('pointsByWeekAndAllocatedTo', pointsByWeekAndAllocatedTo)
-    // const issue = await context.octokit.issues.get({
-    //     owner: 'evoke-labs',
-    //     issue_number: 5,
-    //     repo: 'fund-management'
-    // })
-    // console.log('issue', issue)
+    // Generate Week Table
+    const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Points |
+| --- | --- |
+${Object.entries(pointsByWeekAndAllocatedTo ?? {}).map(([user, points]) => `| ${user} | ${points} |`).join('\n')}
+`;
+    // Generate Current Week Table
+    const week0Table = generateTable(pointsByWeekAndAllocatedTo[0])
+    const week1Table = generateTable(pointsByWeekAndAllocatedTo[1])
+    const week2Table = generateTable(pointsByWeekAndAllocatedTo[2])
+
+    // Loop through issues and update overview
+    await Promise.all(overview_issues.map(async (issue) => {
+        const newOverviewComment = `<!--- bot-overview-week -->
+
+## Current Week (${thisWeekMonday.format('DD/MM/YYYY')} - ${moment().endOf('isoWeek').format('DD/MM/YYYY')})
+${week0Table}
+<!--- /bot-overview-week -->
+
+## Previous Week (${previousWeekMonday.format('DD/MM/YYYY')} - ${moment().subtract(1, 'weeks').endOf('isoWeek').format('DD/MM/YYYY')})
+${week1Table}
+<!--- /bot-overview-week -->
+
+## Late Previous Week (${latePreviousWeekMonday.format('DD/MM/YYYY')} - ${moment().subtract(2, 'weeks').endOf('isoWeek').format('DD/MM/YYYY')})
+${week2Table}
+<!--- /bot-overview-week -->`
+        await context.octokit.issues.update({
+            owner: 'evoke-labs',
+            issue_number: issue.issue_number,
+            repo: issue.repo,
+            body: newOverviewComment
+        })
+    }))
 }
 
 
