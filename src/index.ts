@@ -79,7 +79,7 @@ const labelsWithColors = [
     },
 ];
 
-const adminUsers = ["Chathu94", "KrishEvoke1"];
+const adminUsers = ["Chathu94", "KrishEvoke"];
 
 const reCreateLabels = async (context: Context) => {
     const labels = await context.octokit.issues.listLabelsForRepo(context.repo());
@@ -155,8 +155,10 @@ const comment = (context: Context, body: string) => {
 const checkIfCommenterIsAdmin = (context: Context<"issue_comment.created">) =>
     adminUsers.includes(context.payload.comment.user.login);
 
-const checkIfCommenterIsAssignee = (context: Context<"issue_comment.created">) =>
-    context.payload.issue.assignee.login == context.payload.comment.user.login
+const checkIfCommenterIsAssignee = (context: Context<"issue_comment.created">) => {
+    if (!context.payload.issue.assignee) return false
+    return context.payload.issue.assignee.login == context.payload.comment.user.login
+}
 
 const regenerateOverview = async (context: Context<"issues.assigned" | "issue_comment.created" | "issues.reopened">) => {
     const previousWeekMonday = moment().subtract(1, 'weeks').startOf('isoWeek')
@@ -176,7 +178,13 @@ const regenerateOverview = async (context: Context<"issues.assigned" | "issue_co
             // }
         }
     })
-    const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => ({ ...a, [checkWeekBracket(pa.approvedAt)]: { ...(a[checkWeekBracket(pa.approvedAt)] ?? {}), [pa.allocatedTo]: pa.points + (a[checkWeekBracket(pa.approvedAt)]?.[pa.allocatedTo] ?? 0) } }), {})
+    const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => ({
+        ...a,
+        [checkWeekBracket(pa.approvedAt)]: {
+            ...(a[checkWeekBracket(pa.approvedAt)] ?? {}),
+            [pa.allocatedTo]: pa.points + (a[checkWeekBracket(pa.approvedAt)]?.[pa.allocatedTo] ?? 0)
+        }
+    }), {})
     console.log('pointsByWeekAndAllocatedTo', pointsByWeekAndAllocatedTo)
     // Generate Week Table
     const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Points |
@@ -212,6 +220,42 @@ ${week2Table}
     }))
 }
 
+const issueOverview = async (context: Context<"issue_comment.created">) => {
+    const generateTable = async () => {
+        const issue = await prisma.issue.findUnique({
+            where: {
+                githubId: context.payload.issue.id,
+            },
+        });
+        const pointAllocations = await prisma.pointAllocation.findMany({
+            where: {
+                issueId: issue.id,
+            },
+        });
+        const existingContent = context.payload.issue.body;
+        const regex = /([\s\S]*?)<!---\s*bot-issue-overview\s*-->/;
+        const match = existingContent.match(regex);
+        const existingContentBeforeTable = match ? match[1] : '';
+
+        return `${existingContentBeforeTable}<!--- bot-issue-overview -->
+*Do not edit things below this line*
+## Issue Overview
+| ID | Points | Type | Requested By | Allocated To | Approved By | Approved At |
+| --- | --- | --- | --- | --- | --- | --- |
+${pointAllocations
+            .map(
+                (pa) =>
+                    `| ${pa.id} | ${pa.points} | ${pa.type} | ${pa.requestedBy} | ${pa.allocatedTo} | ${pa.approvedBy} | ${pa.approvedAt} |`,
+            )
+            .join("\n")}`;
+    }
+
+    const table = await generateTable()
+    await context.octokit.issues.update({
+        ...context.issue(),
+        body: table
+    })
+}
 
 
 const checkAndHandlePointRevaluationNeededLabel = async (
@@ -316,12 +360,11 @@ export = (app: Probot) => {
                 });
             }
             switch (parts[1]) {
+                case "issue-overview":
+                    await issueOverview(context)
+                    break;
                 case "regenerate-overview":
                     await regenerateOverview(context)
-                    break;
-                case "fix":
-                    await checkAndHandlePointRevaluationNeededLabel(context);
-                    console.log("fixed");
                     break;
                 case "assign":
                     const assignee = parts[2];
@@ -568,6 +611,7 @@ ${pointAllocations
                             );
                             break;
                     }
+                    await issueOverview(context)
                     break;
                 case "admin":
                     if (!checkIfCommenterIsAdmin(context)) return;
@@ -615,7 +659,7 @@ ${pointAllocations
           /bot point allocate <points> - Allocates points to issue's assignee [ ADMIN ONLY ]
           /bot point request <user> <points> <type> - Requests points to a user
           /bot point revoke <pointID> - Revokes point request
-          /bot point approve <points> - Approves point request [ ADMIN ONLY ]
+          /bot point approve <pointID> - Approves point request [ ADMIN ONLY ]
           /bot point reject <points> - Rejects point request [ ADMIN ONLY ]
           /bot point list - Lists all point allocations
           
