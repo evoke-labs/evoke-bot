@@ -232,7 +232,7 @@ const issueOverview = async (context: Context<"issue_comment.created">) => {
                 issueId: issue.id,
             },
         });
-        const existingContent = context.payload.issue.body;
+        const existingContent = context.payload.issue.body ?? '';
         const regex = /([\s\S]*?)<!---\s*bot-issue-overview\s*-->/;
         const match = existingContent.match(regex);
         const existingContentBeforeTable = match ? match[1] : '';
