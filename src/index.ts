@@ -220,7 +220,7 @@ ${week2Table}
     }))
 }
 
-const issueOverview = async (context: Context<"issue_comment.created">) => {
+const generateIssueOverview = async (context: Context<"issue_comment.created">) => {
     const generateTable = async () => {
         const issue = await prisma.issue.findUnique({
             where: {
@@ -245,7 +245,7 @@ const issueOverview = async (context: Context<"issue_comment.created">) => {
 ${pointAllocations
             .map(
                 (pa) =>
-                    `| ${pa.id} | ${pa.points} | ${pa.type} | ${pa.requestedBy} | ${pa.allocatedTo} | ${pa.approvedBy} | ${pa.approvedAt} |`,
+                    `| ${pa.id} | ${pa.points} | ${pa.type} | ${pa.requestedBy} | ${pa.allocatedTo} | ${pa.approvedBy} | ${moment(pa.approvedAt)?.format('DD-MMMM-YYYY hh:mm')} |`,
             )
             .join("\n")}`;
     }
@@ -256,7 +256,6 @@ ${pointAllocations
         body: table
     })
 }
-
 
 const checkAndHandlePointRevaluationNeededLabel = async (
     context: Context<"issue_comment.created">,
@@ -302,6 +301,41 @@ const checkAndHandlePointRevaluationNeededLabel = async (
     }
 };
 
+const handleAssignees = async (context: Context<"issues.assigned" | "issues.unassigned">) => {
+    const issue = await prisma.issue.findUnique({
+        where: {
+            githubId: context.payload.issue.id,
+        },
+    });
+    if (!issue)
+        throw new Error(
+            "Issue not found. Please re-create issue using /bot admin re-create-issue",
+        );
+
+    const existingPoint = await prisma.pointAllocation.findFirst({
+        where: {
+            issueId: issue.id,
+            type: "Assignee"
+        },
+    });
+    if (existingPoint) {
+        // Edit assignee
+        await prisma.pointAllocation.update({
+            where: {
+                id: existingPoint.id
+            },
+            data: {
+                allocatedTo: context.payload.issue.assignee ? context.payload.issue.assignee.login : null
+            }
+        })
+    } else {
+        throw new Error(
+            "No points allocated. Please allocate points using /bot point allocate [points]",
+        );
+    }
+    await generateIssueOverview(context)
+}
+
 export = (app: Probot) => {
     app.log.info("Yay, the app was loaded!");
     app.on("repository.created", async (context) => {
@@ -345,7 +379,21 @@ export = (app: Probot) => {
                 labels: ["need-point-revaluation"],
             });
         }
-        await issueOverview(context)
+        await generateIssueOverview(context)
+    });
+    app.on("issues.assigned", async (context) => {
+        try {
+            await handleAssignees(context)
+        } catch (e: any) {
+            await comment(context, commandErrorWithMarkdown(e.message));
+        }
+    });
+    app.on("issues.unassigned", async (context) => {
+        try {
+            await handleAssignees(context)
+        } catch (e: any) {
+            await comment(context, commandErrorWithMarkdown(e.message));
+        }
     });
     app.on("issue_comment.created", async (context) => {
         if (context.isBot) return;
@@ -362,7 +410,7 @@ export = (app: Probot) => {
             }
             switch (parts[1]) {
                 case "issue-overview":
-                    await issueOverview(context)
+                    await generateIssueOverview(context)
                     break;
                 case "regenerate-overview":
                     await regenerateOverview(context)
@@ -375,9 +423,12 @@ export = (app: Probot) => {
                     });
                     break;
                 case "unassign":
+                    const unassignee = parts[2].startsWith("@")
+                        ? parts[2].slice(1)
+                        : parts[2];
                     await context.octokit.issues.removeAssignees({
                         ...context.issue(),
-                        assignees: [parts[2]],
+                        assignees: [unassignee],
                     });
                     break;
                 case "label":
@@ -435,15 +486,47 @@ export = (app: Probot) => {
                             if (!points || points < 0 || isNaN(points))
                                 throw new Error("Invalid points");
 
-                            await prisma.pointAllocation.create({
-                                data: {
-                                    points,
-                                    type: "Assignee",
+
+                            if (parts[4] && !Object.values(PointAllocationType).includes(parts[4] as any))
+                                throw new Error(
+                                    "Invalid type. Use one of " +
+                                    Object.values(PointAllocationType).join(", "),
+                                );
+                            const type = parts[4] as PointAllocationType ?? null;
+
+                            const existingPoint = await prisma.pointAllocation.findFirst({
+                                where: {
+                                    type: type ?? "Assignee",
                                     issueId: issue.id,
-                                    approvedAt: new Date(),
-                                    approvedBy: context.payload.comment.user.login,
                                 },
                             });
+
+                            if (existingPoint) {
+                                await prisma.pointAllocation.update({
+                                    where: {
+                                        id: existingPoint.id
+                                    },
+                                    data: {
+                                        points: points,
+                                        approvedAt: new Date(),
+                                        allocatedTo: context.payload.issue.assignee ? context.payload.issue.assignee : null,
+                                        approvedBy: context.payload.comment.user.login,
+                                    },
+                                });
+                            } else {
+                                await prisma.pointAllocation.create({
+                                    data: {
+                                        points,
+                                        type: type ?? "Assignee",
+                                        issueId: issue.id,
+                                        approvedAt: new Date(),
+                                        allocatedTo: context.payload.issue.assignee.login ?? null,
+                                        approvedBy: context.payload.comment.user.login,
+                                    },
+                                });
+                            }
+
+
                             await checkAndHandlePointRevaluationNeededLabel(context);
                             await comment(
                                 context,
@@ -476,15 +559,35 @@ export = (app: Probot) => {
                                 );
                             const type = parts[5] as PointAllocationType;
 
-                            await prisma.pointAllocation.create({
-                                data: {
-                                    points: pointsRequested,
-                                    type,
+                            const existingPoint = await prisma.pointAllocation.findFirst({
+                                where: {
+                                    type: type,
+                                    allocatedTo: allocatedTo,
                                     issueId: issue.id,
-                                    requestedBy: context.payload.comment.user.login,
-                                    allocatedTo,
                                 },
                             });
+
+                            if (existingPoint) {
+                                await prisma.pointAllocation.update({
+                                    where: {
+                                        id: existingPoint.id
+                                    },
+                                    data: {
+                                        points: existingPoint.points + pointsRequested,
+                                        requestedBy: context.payload.comment.user.login,
+                                    },
+                                });
+                            } else {
+                                await prisma.pointAllocation.create({
+                                    data: {
+                                        points: pointsRequested,
+                                        type,
+                                        issueId: issue.id,
+                                        requestedBy: context.payload.comment.user.login,
+                                        allocatedTo,
+                                    },
+                                });
+                            }
 
                             await checkAndHandlePointRevaluationNeededLabel(context);
                             await comment(
@@ -612,7 +715,7 @@ ${pointAllocations
                             );
                             break;
                     }
-                    await issueOverview(context)
+                    await generateIssueOverview(context)
                     break;
                 case "admin":
                     if (!checkIfCommenterIsAdmin(context)) return;
