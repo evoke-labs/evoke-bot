@@ -49,4 +49,5 @@ model Issue {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   pointAllocations PointAllocation[]
+  cardId Int?
 }

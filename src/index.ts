@@ -232,6 +232,16 @@ const generateIssueOverview = async (context: Context<"issue_comment.created">) 
                 issueId: issue.id,
             },
         });
+
+        const assigneeAllocation = pointAllocations.find((pa) => pa.type === "Assignee")
+        const points = /^\[SP-(\d+)\].+/.exec(context.payload.issue.title)?.[1] ?? null
+        if (assigneeAllocation && (!points || isNaN(parseInt(points)) || parseInt(points) !== assigneeAllocation.points)) {
+            await context.octokit.issues.update({
+                ...context.issue(),
+                title: `[SP-${assigneeAllocation.points}] ${context.payload.issue.title.replace(/^\[SP-\d+\]/, '')}`
+            })
+        }
+
         const existingContent = context.payload.issue.body ?? '';
         const regex = /([\s\S]*?)<!---\s*bot-issue-overview\s*-->/;
         const match = existingContent.match(regex);
@@ -399,7 +409,14 @@ export = (app: Probot) => {
         if (context.isBot) return;
         // Check if comment is bot command
         const command = context.payload.comment.body;
-        const parts = command.split(" ");
+        let parts = command.split(" ");
+        if (parts.includes("-d")) {
+            await context.octokit.issues.deleteComment({
+                ...context.issue(),
+                comment_id: context.payload.comment.id,
+            });
+            delete parts[parts.indexOf("-d")];
+        }
         if (parts.length < 2 || parts[0] !== "/bot") return;
         try {
             if (parts.includes("-d")) {
@@ -509,7 +526,7 @@ export = (app: Probot) => {
                                     data: {
                                         points: points,
                                         approvedAt: new Date(),
-                                        allocatedTo: context.payload.issue.assignee ? context.payload.issue.assignee : null,
+                                        allocatedTo: context.payload.issue.assignee ? context.payload.issue.assignee?.login : null,
                                         approvedBy: context.payload.comment.user.login,
                                     },
                                 });
@@ -520,7 +537,7 @@ export = (app: Probot) => {
                                         type: type ?? "Assignee",
                                         issueId: issue.id,
                                         approvedAt: new Date(),
-                                        allocatedTo: context.payload.issue.assignee.login ?? null,
+                                        allocatedTo: context.payload.issue.assignee?.login ?? null,
                                         approvedBy: context.payload.comment.user.login,
                                     },
                                 });
