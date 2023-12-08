@@ -267,6 +267,31 @@ ${pointAllocations
     })
 }
 
+const syncAllocatedToWithAssignee = async (context: Context<"issue_comment.created">) => {
+    // if (!context.payload.issue.assignee) throw new Error("No one assigned for this issue");
+    const issue = await prisma.issue.findUnique({
+        where: {
+            githubId: context.payload.issue.id,
+        },
+    });
+    const pointAllocations = await prisma.pointAllocation.findMany({
+        where: {
+            issueId: issue.id
+        }
+    })
+    const syncPoints = pointAllocations.filter(f => f.type !== 'Helper')
+    if (syncPoints) {
+        await prisma.pointAllocation.updateMany({
+            where: {
+                issueId: issue.id
+            },
+            data: {
+                allocatedTo: context.payload.issue.assignee?.login ?? null
+            }
+        })
+    }
+}
+
 const checkAndHandlePointRevaluationNeededLabel = async (
     context: Context<"issue_comment.created">,
 ) => {
@@ -426,6 +451,10 @@ export = (app: Probot) => {
                 });
             }
             switch (parts[1]) {
+                case "sync-assignee":
+                    await syncAllocatedToWithAssignee(context)
+                    await generateIssueOverview(context)
+                    break;
                 case "issue-overview":
                     await generateIssueOverview(context)
                     break;
@@ -433,7 +462,9 @@ export = (app: Probot) => {
                     await regenerateOverview(context)
                     break;
                 case "assign":
-                    const assignee = parts[2];
+                    const assignee = parts[2].startsWith("@")
+                        ? parts[2].slice(1)
+                        : parts[2];
                     await context.octokit.issues.addAssignees({
                         ...context.issue(),
                         assignees: [assignee],
@@ -502,7 +533,6 @@ export = (app: Probot) => {
                             const points = parseInt(parts[3]);
                             if (!points || points < 0 || isNaN(points))
                                 throw new Error("Invalid points");
-
 
                             if (parts[4] && !Object.values(PointAllocationType).includes(parts[4] as any))
                                 throw new Error(
