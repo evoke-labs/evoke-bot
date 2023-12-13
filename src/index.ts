@@ -13,6 +13,10 @@ const overview_issues = [
     {
         issue_number: 5,
         repo: 'fund-management'
+    },
+    {
+        issue_number: 117,
+        repo: 'fused-frontend'
     }
 ]
 
@@ -451,11 +455,8 @@ export = (app: Probot) => {
                 });
             }
             switch (parts[1]) {
-                case "sync-assignee":
+                case "sync":
                     await syncAllocatedToWithAssignee(context)
-                    await generateIssueOverview(context)
-                    break;
-                case "issue-overview":
                     await generateIssueOverview(context)
                     break;
                 case "regenerate-overview":
