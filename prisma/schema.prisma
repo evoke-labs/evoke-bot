@@ -50,4 +50,5 @@ model Issue {
   updatedAt DateTime @updatedAt
   pointAllocations PointAllocation[]
   cardId Int?
+  closed Boolean? @default(false)
 }

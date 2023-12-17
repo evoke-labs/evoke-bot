@@ -175,25 +175,64 @@ const regenerateOverview = async (context: Context<"issues.assigned" | "issue_co
         return 2
     }
 
-    const pointsThisWeek = await prisma.pointAllocation.findMany({
-        where: {
-            // approvedAt: {
-            //     gt: latePreviousWeekMonday.toDate(),
-            // }
-        }
+    const pointsThisWeek = await prisma.pointAllocation.aggregateRaw({
+        pipeline: [
+            {
+                $lookup: {
+                    from: 'Issue',
+                    localField: 'issueId',
+                    foreignField: '_id',
+                    as: 'issue'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$issue'
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    issueId: 1,
+                    approvedAt: {$dateToString: {format: '%Y-%m-%dT%H:%M:%S.%LZ', date: '$approvedAt'}},
+                    approvedBy: 1,
+                    type: 1,
+                    createdAt: 1,
+                    updatedAt: 1,
+                    issue: 1,
+                    rejectedBy: 1,
+                    rejectedAt: 1,
+                    requestedBy: 1,
+                    allocatedTo: 1,
+                    points: 1
+                }
+            }
+        ]
     })
-    const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => ({
-        ...a,
-        [checkWeekBracket(pa.approvedAt)]: {
-            ...(a[checkWeekBracket(pa.approvedAt)] ?? {}),
-            [pa.allocatedTo]: pa.points + (a[checkWeekBracket(pa.approvedAt)]?.[pa.allocatedTo] ?? 0)
-        }
-    }), {})
+
+    // const pointsThisWeek = await prisma.pointAllocation.findMany({
+    //
+    // })
+
+    const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => {
+        const weekBracket = checkWeekBracket(pa.approvedAt)
+        return ({
+            ...a,
+            [weekBracket]: {
+                ...(a[checkWeekBracket(pa.approvedAt)] ?? {}),
+                [pa.allocatedTo]: {
+                    complete: pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0),
+                    pending: !pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0)
+                }
+            }
+        })
+
+    }, {})
     console.log('pointsByWeekAndAllocatedTo', pointsByWeekAndAllocatedTo)
     // Generate Week Table
-    const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Points |
-| --- | --- |
-${Object.entries(pointsByWeekAndAllocatedTo ?? {}).map(([user, points]) => `| ${user} | ${points} |`).join('\n')}
+    const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Pending Points | Complete Points
+| --- | --- | --- |
+${Object.entries(pointsByWeekAndAllocatedTo ?? {}).map(([user, points]) => `| ${user} | ${points?.pending} | ${points?.complete} |`).join('\n')}
 `;
     // Generate Current Week Table
     const week0Table = generateTable(pointsByWeekAndAllocatedTo[0])
@@ -269,6 +308,8 @@ ${pointAllocations
         ...context.issue(),
         body: table
     })
+
+    await regenerateOverview(context)
 }
 
 const syncAllocatedToWithAssignee = async (context: Context<"issue_comment.created">) => {
@@ -373,6 +414,7 @@ const handleAssignees = async (context: Context<"issues.assigned" | "issues.unas
         );
     }
     await generateIssueOverview(context)
+    await regenerateOverview(context)
 }
 
 export = (app: Probot) => {
@@ -430,6 +472,36 @@ export = (app: Probot) => {
     app.on("issues.unassigned", async (context) => {
         try {
             await handleAssignees(context)
+        } catch (e: any) {
+            await comment(context, commandErrorWithMarkdown(e.message));
+        }
+    });
+    app.on("issues.closed", async (context) => {
+        try {
+            await prisma.issue.update({
+                where: {
+                    githubId: context.payload.issue.id
+                },
+                data: {
+                    closed: true
+                }
+            })
+            await regenerateOverview(context)
+        } catch (e: any) {
+            await comment(context, commandErrorWithMarkdown(e.message));
+        }
+    });
+    app.on("issues.reopened", async (context) => {
+        try {
+            await prisma.issue.update({
+                where: {
+                    githubId: context.payload.issue.id
+                },
+                data: {
+                    closed: false
+                }
+            })
+            await regenerateOverview(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
