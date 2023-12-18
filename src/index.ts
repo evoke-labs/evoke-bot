@@ -292,7 +292,7 @@ const generateIssueOverview = async (context: Context<"issue_comment.created">) 
 
         return `${existingContentBeforeTable}<!--- bot-issue-overview -->
 *Do not edit things below this line*
-## Issue Overview
+## Issue Overview (${issue.closed ? 'Closed' : 'Open'})
 | ID | Points | Type | Requested By | Allocated To | Approved By | Approved At |
 | --- | --- | --- | --- | --- | --- | --- |
 ${pointAllocations
@@ -308,7 +308,6 @@ ${pointAllocations
         ...context.issue(),
         body: table
     })
-
     await regenerateOverview(context)
 }
 
@@ -335,6 +334,23 @@ const syncAllocatedToWithAssignee = async (context: Context<"issue_comment.creat
             }
         })
     }
+    await regenerateOverview(context)
+}
+
+const isIssueClosed = (state: string) => {
+    return state != 'open'
+}
+
+const syncIssue = async (context: Context<"issue_comment.created">) => {
+    await prisma.issue.update({
+        where: {
+            githubId: context.payload.issue.id
+        },
+        data: {
+            closed: isIssueClosed(context.payload.issue.state)
+        }
+    })
+    await generateIssueOverview(context)
 }
 
 const checkAndHandlePointRevaluationNeededLabel = async (
@@ -414,7 +430,6 @@ const handleAssignees = async (context: Context<"issues.assigned" | "issues.unas
         );
     }
     await generateIssueOverview(context)
-    await regenerateOverview(context)
 }
 
 export = (app: Probot) => {
@@ -486,7 +501,7 @@ export = (app: Probot) => {
                     closed: true
                 }
             })
-            await regenerateOverview(context)
+            await generateIssueOverview(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
@@ -501,7 +516,7 @@ export = (app: Probot) => {
                     closed: false
                 }
             })
-            await regenerateOverview(context)
+            await generateIssueOverview(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
@@ -528,9 +543,24 @@ export = (app: Probot) => {
             }
             switch (parts[1]) {
                 case "sync":
-                    await syncAllocatedToWithAssignee(context)
-                    await generateIssueOverview(context)
-                    break;
+                    if (!parts[2]) return;
+                    switch (parts[2]) {
+                        case "issue":
+                            await syncIssue(context)
+                            break
+                        case "assignee":
+                            await syncAllocatedToWithAssignee(context)
+                            break
+                        default:
+                            await comment(
+                                context,
+                                commandErrorWithMarkdown(
+                                    `Unknown sync command. Available commands: [issue, assignee]`,
+                                ),
+                            )
+                            break
+                    }
+                    break
                 case "regenerate-overview":
                     await regenerateOverview(context)
                     break;
