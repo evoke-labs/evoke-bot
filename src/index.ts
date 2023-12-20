@@ -541,6 +541,7 @@ export = (app: Probot) => {
                         id: issue.id
                     }
                 })
+                await regenerateOverview(context)
             } else {
                 throw new Error('Issue not found')
             }
