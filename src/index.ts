@@ -215,11 +215,11 @@ const regenerateOverview = async (context: Context<"issues.assigned" | "issue_co
     // })
 
     const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => {
-        const weekBracket = checkWeekBracket(pa.approvedAt)
+        const weekBracket = checkWeekBracket(pa.issue.closedAt ?? pa.approvedAt)
         return ({
             ...a,
             [weekBracket]: {
-                ...(a[checkWeekBracket(pa.approvedAt)] ?? {}),
+                ...(a[weekBracket] ?? {}),
                 [pa.allocatedTo]: {
                     complete: pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0),
                     pending: !pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0)
@@ -493,12 +493,18 @@ export = (app: Probot) => {
     });
     app.on("issues.closed", async (context) => {
         try {
+            const issue = await prisma.issue.findUnique({
+                where: {
+                    githubId: context.payload.issue.id,
+                }
+            })
             await prisma.issue.update({
                 where: {
                     githubId: context.payload.issue.id
                 },
                 data: {
-                    closed: true
+                    closed: true,
+                    closedAt: !issue.closedAt ? new Date() : undefined
                 }
             })
             await generateIssueOverview(context)
@@ -521,6 +527,27 @@ export = (app: Probot) => {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
     });
+    app.on("issues.deleted", async (context) => {
+        try {
+            const issue = await prisma.issue.findUnique({
+                where: {
+                    githubId: context.payload.issue.id
+                }
+            })
+
+            if (issue) {
+                await prisma.issue.delete({
+                    where: {
+                        id: issue.id
+                    }
+                })
+            } else {
+                throw new Error('Issue not found')
+            }
+        } catch (e) {
+            console.log(e)
+        }
+    })
     app.on("issue_comment.created", async (context) => {
         if (context.isBot) return;
         // Check if comment is bot command

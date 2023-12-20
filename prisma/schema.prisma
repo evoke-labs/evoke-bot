@@ -37,9 +37,8 @@ model PointAllocation {
   updatedAt DateTime @updatedAt
   approvedAt DateTime?
   rejectedAt DateTime?
-  issue Issue @relation(fields: [issueId], references: [id])
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
   issueId String @db.ObjectId
-
 }
 
 model Issue {
@@ -51,4 +50,5 @@ model Issue {
   pointAllocations PointAllocation[]
   cardId Int?
   closed Boolean? @default(false)
+  closedAt DateTime?
 }
