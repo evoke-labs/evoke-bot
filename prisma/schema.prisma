@@ -14,14 +14,12 @@ enum PointAllocationType {
   Assignee
   Reviewer
   Helper
-  Quality
-  CleanUp
   BestPractices
-  Documentation
-  Testing
-  Performance
-  Accessibility
-  Security
+  Reusability
+  ExtraMile
+  Readablilty
+  RND
+  DevTesting
   Other
 }
 
