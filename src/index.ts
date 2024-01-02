@@ -27,6 +27,25 @@ const ongoing_issues = [
     }
 ]
 
+const repos = [
+    'fund-management',
+    'fused-frontend',
+    'fused-backend',
+    'fund-management-backend'
+]
+
+const developers = [
+    'KrishEvoke',
+    'Hasini-jayamali-m',
+    'Keshara1997',
+    'sahan-evoke',
+    'LahiruC98',
+    'MinjanaEvoke',
+    'Chalithya',
+    'MadusankaRuwan',
+    'SanduniMP'
+]
+
 const labelsWithColors = [
     {
         name: "bug",
@@ -235,7 +254,6 @@ const regenerateOverview = async (context: Context<"issues.assigned" | "issue_co
         })
 
     }, {})
-    console.log('pointsByWeekAndAllocatedTo', pointsByWeekAndAllocatedTo)
     // Generate Week Table
     const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Pending Points | Complete Points
 | --- | --- | --- |
@@ -439,71 +457,69 @@ const handleAssignees = async (context: Context<"issues.assigned" | "issues.unas
     await generateIssueOverview(context)
 }
 
-const generateOngoingIssues = async (context: Context<"issues.assigned" | "issue_comment.created" | "issues.reopened">) => {
+const getOpenIssuesByAssignee = async (context: Context<"issue_comment.created">, repo: string, assignee: string) => {
     try {
-        const ongoingIssues = await prisma.issue.aggregateRaw({
-            pipeline: [
-                {
-                    $lookup: {
-                        from: 'PointAllocation',
-                        localField: '_id',
-                        foreignField: 'issueId',
-                        as: 'PointAllocation'
-                    }
-                },
-                {
-                    $unwind: {
-                        path: '$PointAllocation'
-                    }
-                },
-                {
-                    $match: {
-                        "PointAllocation.type": "Assignee",
-                        "closed": false
-                    }
-                }
-            ]
+        const issues = await context.octokit.issues.listForRepo({
+            owner: 'evoke-labs',
+            repo: repo,
+            assignee: assignee,
+            state: 'open'
         })
-
-        const issuesByAllocatedTo = ongoingIssues?.filter(i => !!i.PointAllocation.allocatedTo).reduce((a, i) => ({
-            ...a,
-            [i.PointAllocation.allocatedTo]: {
-                points: (a[i.PointAllocation.allocatedTo]?.points ?? 0) + i.PointAllocation.points,
-                issues: [
-                    ...(a[i.PointAllocation.allocatedTo]?.issues ?? []),
-                    {
-                        issueId: i.PointAllocation.issueId
-                    }
-                ]
-            }
-        }), {})
-        // console.log("issuesByAllocatedTo", issuesByAllocatedTo['MinjanaEvoke'])
-
-        // await Promise.all(ongoing_issues.map(async (issue) => {
-        //     const table = Object.entries(issuesByAllocatedTo ?? {}).map(([user, data]) => `##${user}
-        //     | Issue ID
-        //     | --- |
-        //     ${data?.issues?.map(m => `| ${m.issueId} |`)}`)
-        //
-        //     await context.octokit.issues.update({
-        //         owner: 'evoke-labs',
-        //         issue_number: issue.issue_number,
-        //         repo: issue.repo,
-        //         body: table
-        //     })
-        // }))
-        const table = Object.entries(issuesByAllocatedTo ?? {}).map(([user, data]) => `##${user}
-        | Issue ID |
-        --- | ${data?.issues[0]?.issueId}`)
-
-        await comment(context, table)
-
+        return issues.data.map((i) => ({
+            number: i.number,
+            title: i.title,
+            url: i.html_url
+        }))
+    } catch (e: any) {
+        console.error(e)
     }
-    catch (e) {
-        console.log(e)
+}
+
+const getAllIssuesForAssignees = async (context: Context<"issue_comment.created">) => {
+    try {
+        return await Promise.all(
+            developers.map(async (assignee) => {
+                const assingeeIssues = await Promise.all(
+                    repos.map((repo) => getOpenIssuesByAssignee(context, repo, assignee))
+                )
+                return {
+                    assignee,
+                    issues: assingeeIssues.flat()
+                }
+            })
+        );
+    } catch (e: any) {
+        console.error(e)
     }
 
+}
 
+const generateOngoingIssues = async (context: Context<"issue_comment.created">) => {
+    try {
+        const issuesByAllocatedTo = await getAllIssuesForAssignees(context)
+
+        const generateTable = () => {
+            return issuesByAllocatedTo.map((i) => {
+                return `## ${i.assignee}
+| **Open Issues** |
+| --- |
+${i.issues?.map(issue => `| [${issue.title.toString() || 'Null'}](${issue.url.toString()}) |`).join('\n')}`;
+            })
+                .join('\n');
+        };
+
+        await Promise.all(ongoing_issues.map(async (issue) => {
+            await context.octokit.issues.update({
+                owner: 'evoke-labs',
+                issue_number: issue.issue_number,
+                repo: issue.repo,
+                body: generateTable()
+            })
+        }))
+
+    } catch (e) {
+        console.error(e)
+    }
 }
 
 export = (app: Probot) => {
@@ -554,6 +570,7 @@ export = (app: Probot) => {
     app.on("issues.assigned", async (context) => {
         try {
             await handleAssignees(context)
+            await generateOngoingIssues(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
@@ -561,6 +578,7 @@ export = (app: Probot) => {
     app.on("issues.unassigned", async (context) => {
         try {
             await handleAssignees(context)
+            await generateOngoingIssues(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
@@ -582,6 +600,7 @@ export = (app: Probot) => {
                 }
             })
             await generateIssueOverview(context)
+            await generateOngoingIssues(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
@@ -597,6 +616,7 @@ export = (app: Probot) => {
                 }
             })
             await generateIssueOverview(context)
+            await generateOngoingIssues(context)
         } catch (e: any) {
             await comment(context, commandErrorWithMarkdown(e.message));
         }
@@ -616,11 +636,12 @@ export = (app: Probot) => {
                     }
                 })
                 await regenerateOverview(context)
+                await generateOngoingIssues(context)
             } else {
                 throw new Error('Issue not found')
             }
         } catch (e) {
-            console.log(e)
+            console.error(e)
         }
     })
     app.on("issue_comment.created", async (context) => {
@@ -645,7 +666,7 @@ export = (app: Probot) => {
             }
             switch (parts[1]) {
                 case "test":
-                    await generateOngoingIssues(context);
+                    await generateOngoingIssues(context)
                     break;
                 case "sync":
                     if (!parts[2]) return;
