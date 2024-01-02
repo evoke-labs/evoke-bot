@@ -20,6 +20,13 @@ const overview_issues = [
     }
 ]
 
+const ongoing_issues = [
+    {
+        issue_number: 33,
+        repo: 'fund-management'
+    }
+]
+
 const labelsWithColors = [
     {
         name: "bug",
@@ -298,7 +305,7 @@ const generateIssueOverview = async (context: Context<"issue_comment.created">) 
 ${pointAllocations
             .map(
                 (pa) =>
-                    `| ${pa.id} | ${pa.points} | ${pa.type} | ${pa.requestedBy} | ${pa.allocatedTo} | ${pa.approvedBy} | ${moment(pa.approvedAt)?.format('DD-MMMM-YYYY hh:mm')} |`,
+                    `| ${pa.id} | ${pa.points} | ${pa.type} | ${pa.requestedBy} | ${pa.allocatedTo} | ${pa.approvedBy} | ${moment(pa.approvedAt)?.format('DD-MMMM-YYYY hh:mm') ?? null} |`,
             )
             .join("\n")}`;
     }
@@ -430,6 +437,73 @@ const handleAssignees = async (context: Context<"issues.assigned" | "issues.unas
         );
     }
     await generateIssueOverview(context)
+}
+
+const generateOngoingIssues = async (context: Context<"issues.assigned" | "issue_comment.created" | "issues.reopened">) => {
+    try {
+        const ongoingIssues = await prisma.issue.aggregateRaw({
+            pipeline: [
+                {
+                    $lookup: {
+                        from: 'PointAllocation',
+                        localField: '_id',
+                        foreignField: 'issueId',
+                        as: 'PointAllocation'
+                    }
+                },
+                {
+                    $unwind: {
+                        path: '$PointAllocation'
+                    }
+                },
+                {
+                    $match: {
+                        "PointAllocation.type": "Assignee",
+                        "closed": false
+                    }
+                }
+            ]
+        })
+
+        const issuesByAllocatedTo = ongoingIssues?.filter(i => !!i.PointAllocation.allocatedTo).reduce((a, i) => ({
+            ...a,
+            [i.PointAllocation.allocatedTo]: {
+                points: (a[i.PointAllocation.allocatedTo]?.points ?? 0) + i.PointAllocation.points,
+                issues: [
+                    ...(a[i.PointAllocation.allocatedTo]?.issues ?? []),
+                    {
+                        issueId: i.PointAllocation.issueId
+                    }
+                ]
+            }
+        }), {})
+        // console.log("issuesByAllocatedTo", issuesByAllocatedTo['MinjanaEvoke'])
+
+        // await Promise.all(ongoing_issues.map(async (issue) => {
+        //     const table = Object.entries(issuesByAllocatedTo ?? {}).map(([user, data]) => `##${user}
+        //     | Issue ID
+        //     | --- |
+        //     ${data?.issues?.map(m => `| ${m.issueId} |`)}`)
+        //
+        //     await context.octokit.issues.update({
+        //         owner: 'evoke-labs',
+        //         issue_number: issue.issue_number,
+        //         repo: issue.repo,
+        //         body: table
+        //     })
+        // }))
+        const table = Object.entries(issuesByAllocatedTo ?? {}).map(([user, data]) => `##${user}
+        | Issue ID |
+        --- | ${data?.issues[0]?.issueId}`)
+
+        await comment(context, table)
+
+    }
+    catch (e) {
+        console.log(e)
+    }
+
+
 }
 
 export = (app: Probot) => {
@@ -570,6 +644,9 @@ export = (app: Probot) => {
                 });
             }
             switch (parts[1]) {
+                case "test":
+                    await generateOngoingIssues(context);
+                    break;
                 case "sync":
                     if (!parts[2]) return;
                     switch (parts[2]) {
