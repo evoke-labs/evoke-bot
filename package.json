@@ -14,13 +14,16 @@
   "scripts": {
     "build": "tsc -w",
     "start": "probot run ./lib/index.js",
+    "dev": "ts-node-dev ./src/server.ts",
     "test": "jest"
   },
   "dependencies": {
     "@prisma/client": "^5.6.0",
+    "dotenv": "^16.4.5",
     "moment-timezone": "^0.5.43",
     "prisma": "^5.6.0",
-    "probot": "^12.2.4"
+    "probot": "^12.2.4",
+    "ts-node-dev": "^2.0.0"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",

@@ -109,7 +109,7 @@ const labelsWithColors = [
     },
 ];
 
-const adminUsers = ["Chathu94", "KrishEvoke", "KrishnaWanusha"];
+const adminUsers = ["Chathu94", "KrishEvoke", "KrishnaWanusha", "DasiniSumanaweera", "elroshanr"];
 
 const reCreateLabels = async (context: Context) => {
     const labels = await context.octokit.issues.listLabelsForRepo(context.repo());
@@ -191,101 +191,101 @@ const checkIfCommenterIsAssignee = (context: Context<"issue_comment.created">) =
 }
 
 const regenerateOverview = async (context: Context<"issues.assigned" | "issue_comment.created" | "issues.reopened">) => {
-    const previousWeekMonday = moment().subtract(1, 'weeks').startOf('isoWeek')
-    const latePreviousWeekMonday = moment().subtract(2, 'weeks').startOf('isoWeek')
-    const thisWeekMonday = moment().startOf('isoWeek')
-
-    const checkWeekBracket = (date: Date) => {
-        if (moment(date).isAfter(thisWeekMonday)) return 0
-        if (moment(date).isAfter(previousWeekMonday)) return 1
-        return 2
-    }
-
-    const pointsThisWeek = await prisma.pointAllocation.aggregateRaw({
-        pipeline: [
-            {
-                $lookup: {
-                    from: 'Issue',
-                    localField: 'issueId',
-                    foreignField: '_id',
-                    as: 'issue'
-                }
-            },
-            {
-                $unwind: {
-                    path: '$issue'
-                }
-            },
-            {
-                $project: {
-                    _id: 1,
-                    issueId: 1,
-                    approvedAt: {$dateToString: {format: '%Y-%m-%dT%H:%M:%S.%LZ', date: '$approvedAt'}},
-                    approvedBy: 1,
-                    type: 1,
-                    createdAt: 1,
-                    updatedAt: 1,
-                    issue: 1,
-                    rejectedBy: 1,
-                    rejectedAt: 1,
-                    requestedBy: 1,
-                    allocatedTo: 1,
-                    points: 1
-                }
-            }
-        ]
-    })
-
-    // const pointsThisWeek = await prisma.pointAllocation.findMany({
-    //
-    // })
-
-    const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => {
-        const weekBracket = checkWeekBracket(pa.issue.closedAt ?? pa.approvedAt)
-        return ({
-            ...a,
-            [weekBracket]: {
-                ...(a[weekBracket] ?? {}),
-                [pa.allocatedTo]: {
-                    complete: pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0),
-                    pending: !pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0)
-                }
-            }
-        })
-
-    }, {})
-    // Generate Week Table
-    const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Pending Points | Complete Points
-| --- | --- | --- |
-${Object.entries(pointsByWeekAndAllocatedTo ?? {}).map(([user, points]) => `| ${user} | ${points?.pending} | ${points?.complete} |`).join('\n')}
-`;
-    // Generate Current Week Table
-    const week0Table = generateTable(pointsByWeekAndAllocatedTo[0])
-    const week1Table = generateTable(pointsByWeekAndAllocatedTo[1])
-    const week2Table = generateTable(pointsByWeekAndAllocatedTo[2])
-
-    // Loop through issues and update overview
-    await Promise.all(overview_issues.map(async (issue) => {
-        const newOverviewComment = `<!--- bot-overview-week -->
-
-## Current Week (${thisWeekMonday.format('DD/MM/YYYY')} - ${moment().endOf('isoWeek').format('DD/MM/YYYY')})
-${week0Table}
-<!--- /bot-overview-week -->
-
-## Previous Week (${previousWeekMonday.format('DD/MM/YYYY')} - ${moment().subtract(1, 'weeks').endOf('isoWeek').format('DD/MM/YYYY')})
-${week1Table}
-<!--- /bot-overview-week -->
-
-## Late Previous Week (${latePreviousWeekMonday.format('DD/MM/YYYY')} - ${moment().subtract(2, 'weeks').endOf('isoWeek').format('DD/MM/YYYY')})
-${week2Table}
-<!--- /bot-overview-week -->`
-        await context.octokit.issues.update({
-            owner: 'evoke-labs',
-            issue_number: issue.issue_number,
-            repo: issue.repo,
-            body: newOverviewComment
-        })
-    }))
+//     const previousWeekMonday = moment().subtract(1, 'weeks').startOf('isoWeek')
+//     const latePreviousWeekMonday = moment().subtract(2, 'weeks').startOf('isoWeek')
+//     const thisWeekMonday = moment().startOf('isoWeek')
+//
+//     const checkWeekBracket = (date: Date) => {
+//         if (moment(date).isAfter(thisWeekMonday)) return 0
+//         if (moment(date).isAfter(previousWeekMonday)) return 1
+//         return 2
+//     }
+//
+//     const pointsThisWeek = await prisma.pointAllocation.aggregateRaw({
+//         pipeline: [
+//             {
+//                 $lookup: {
+//                     from: 'Issue',
+//                     localField: 'issueId',
+//                     foreignField: '_id',
+//                     as: 'issue'
+//                 }
+//             },
+//             {
+//                 $unwind: {
+//                     path: '$issue'
+//                 }
+//             },
+//             {
+//                 $project: {
+//                     _id: 1,
+//                     issueId: 1,
+//                     approvedAt: {$dateToString: {format: '%Y-%m-%dT%H:%M:%S.%LZ', date: '$approvedAt'}},
+//                     approvedBy: 1,
+//                     type: 1,
+//                     createdAt: 1,
+//                     updatedAt: 1,
+//                     issue: 1,
+//                     rejectedBy: 1,
+//                     rejectedAt: 1,
+//                     requestedBy: 1,
+//                     allocatedTo: 1,
+//                     points: 1
+//                 }
+//             }
+//         ]
+//     })
+//
+//     // const pointsThisWeek = await prisma.pointAllocation.findMany({
+//     //
+//     // })
+//
+//     const pointsByWeekAndAllocatedTo = pointsThisWeek?.filter(pa => !!pa.allocatedTo).reduce((a, pa) => {
+//         const weekBracket = checkWeekBracket(pa.issue.closedAt ?? pa.approvedAt)
+//         return ({
+//             ...a,
+//             [weekBracket]: {
+//                 ...(a[weekBracket] ?? {}),
+//                 [pa.allocatedTo]: {
+//                     complete: pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.complete ?? 0),
+//                     pending: !pa.issue?.closed ? pa.points + (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0) : (a[weekBracket]?.[pa.allocatedTo]?.pending ?? 0)
+//                 }
+//             }
+//         })
+//
+//     }, {})
+//     // Generate Week Table
+//     const generateTable = (pointsByWeekAndAllocatedTo: any) => `| User | Pending Points | Complete Points
+// | --- | --- | --- |
+// ${Object.entries(pointsByWeekAndAllocatedTo ?? {}).map(([user, points]) => `| ${user} | ${points?.pending} | ${points?.complete} |`).join('\n')}
+// `;
+//     // Generate Current Week Table
+//     const week0Table = generateTable(pointsByWeekAndAllocatedTo[0])
+//     const week1Table = generateTable(pointsByWeekAndAllocatedTo[1])
+//     const week2Table = generateTable(pointsByWeekAndAllocatedTo[2])
+//
+//     // Loop through issues and update overview
+//     await Promise.all(overview_issues.map(async (issue) => {
+//         const newOverviewComment = `<!--- bot-overview-week -->
+//
+// ## Current Week (${thisWeekMonday.format('DD/MM/YYYY')} - ${moment().endOf('isoWeek').format('DD/MM/YYYY')})
+// ${week0Table}
+// <!--- /bot-overview-week -->
+//
+// ## Previous Week (${previousWeekMonday.format('DD/MM/YYYY')} - ${moment().subtract(1, 'weeks').endOf('isoWeek').format('DD/MM/YYYY')})
+// ${week1Table}
+// <!--- /bot-overview-week -->
+//
+// ## Late Previous Week (${latePreviousWeekMonday.format('DD/MM/YYYY')} - ${moment().subtract(2, 'weeks').endOf('isoWeek').format('DD/MM/YYYY')})
+// ${week2Table}
+// <!--- /bot-overview-week -->`
+//         await context.octokit.issues.update({
+//             owner: 'evoke-labs',
+//             issue_number: issue.issue_number,
+//             repo: issue.repo,
+//             body: newOverviewComment
+//         })
+//     }))
 }
 
 const generateIssueOverview = async (context: Context<"issue_comment.created">) => {
@@ -318,6 +318,7 @@ const generateIssueOverview = async (context: Context<"issue_comment.created">) 
         return `${existingContentBeforeTable}<!--- bot-issue-overview -->
 *Do not edit things below this line*
 ## Issue Overview (${issue.closed ? 'Closed' : 'Open'})
+${issue.pr ? `PR: #${issue.pr} - ${moment(issue.prDate).format('DD-MMMM-YYYY hh:mm')}` : ''}
 | ID | Points | Type | Requested By | Allocated To | Approved By | Approved At |
 | --- | --- | --- | --- | --- | --- | --- |
 ${pointAllocations
@@ -391,10 +392,7 @@ const checkAndHandlePointRevaluationNeededLabel = async (
             githubId: context.payload.issue.id,
         },
     });
-    if (!issue)
-        throw new Error(
-            "Issue not found. Please re-create issue using /bot admin re-create-issue",
-        );
+    if (!issue) await reCreateIssue(context as any);
     const pointAllocations = await prisma.pointAllocation.findMany({
         where: {
             issueId: issue.id,
@@ -428,10 +426,7 @@ const handleAssignees = async (context: Context<"issues.assigned" | "issues.unas
             githubId: context.payload.issue.id,
         },
     });
-    if (!issue)
-        throw new Error(
-            "Issue not found. Please re-create issue using /bot admin re-create-issue",
-        );
+    if (!issue) await reCreateIssue(context as any);
 
     const existingPoint = await prisma.pointAllocation.findFirst({
         where: {
@@ -549,10 +544,7 @@ export = (app: Probot) => {
                 githubId: context.payload.issue.id,
             },
         });
-        if (!issue)
-            throw new Error(
-                "Issue not found. Please re-create issue using /bot admin re-create-issue",
-            );
+        if (!issue) await reCreateIssue(context as any);
         const pointAllocations = await prisma.pointAllocation.findMany({
             where: {
                 issueId: issue.id,
@@ -745,10 +737,7 @@ export = (app: Probot) => {
                             githubId: context.payload.issue.id,
                         },
                     });
-                    if (!issue)
-                        throw new Error(
-                            "Issue not found. Please re-create issue using /bot admin re-create-issue",
-                        );
+                    if (!issue) await reCreateIssue(context as any);
                     switch (parts[2]) {
                         case "allocate":
                             if (!checkIfCommenterIsAdmin(context)) {
@@ -760,7 +749,7 @@ export = (app: Probot) => {
                             }
                             if (!parts[3]) return;
                             const points = parseInt(parts[3]);
-                            if (!points || points < 0 || isNaN(points))
+                            if (typeof points !== 'number' || points < 0 || isNaN(points))
                                 throw new Error("Invalid points");
 
                             if (parts[4] && !Object.values(PointAllocationType).includes(parts[4] as any))
@@ -776,6 +765,52 @@ export = (app: Probot) => {
                                     issueId: issue.id,
                                 },
                             });
+
+                            if (!issue.prId) {
+                                // Check if this issue is mentioned in a PR comments
+                                const prComments = await context.octokit.pulls.list({
+                                    ...context.repo(),
+                                    state: 'all'
+                                })
+                                const found = await Promise.all(prComments.data.map(async (pr) => {
+                                    const comments = await context.octokit.issues.listComments({
+                                        ...context.repo(),
+                                        issue_number: pr.number
+                                    })
+                                    const found = comments.data.find(c => c.body.includes(`#${context.payload.issue.number}`))
+                                    return found ? [pr.number, pr.created_at, pr.updated_at] : undefined
+                                }))
+                                if (found?.filter(i => !!i)?.[0]) {
+                                    const prId = found?.filter(i => !!i)?.[0][0]
+                                    const created = found?.filter(i => !!i)?.[0][1]
+                                    const updated = found?.filter(i => !!i)?.[0][2]
+                                    await prisma.issue.update({
+                                        where: {
+                                            githubId: context.payload.issue.id
+                                        },
+                                        data: {
+                                            pr: prId,
+                                            prDate: new Date(updated ?? created)
+                                        }
+                                    })
+                                }
+                            } else {
+                                // Update Date
+                                const pr = await context.octokit.pulls.get({
+                                    ...context.repo(),
+                                    pull_number: issue.prId
+                                })
+                                const created = pr.data.created_at
+                                const updated = pr.data.updated_at
+                                await prisma.issue.update({
+                                    where: {
+                                        githubId: context.payload.issue.id
+                                    },
+                                    data: {
+                                        prDate: new Date(updated ?? created)
+                                    }
+                                })
+                            }
 
                             if (existingPoint) {
                                 await prisma.pointAllocation.update({

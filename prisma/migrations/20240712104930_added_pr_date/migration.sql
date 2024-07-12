@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `Issue` ADD COLUMN `pr` BIGINT NULL,
+    ADD COLUMN `prDate` DATETIME(3) NULL;
