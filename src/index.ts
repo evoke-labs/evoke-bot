@@ -190,6 +190,20 @@ const checkIfCommenterIsAssignee = (context: Context<"issue_comment.created">) =
     return context.payload.issue.assignee.login == context.payload.comment.user.login
 }
 
+async function getAllPullRequests(context: Context) {
+    let pullRequests = [];
+
+    for await (const response of context.octokit.paginate.iterator(context.octokit.rest.pulls.list, {
+        ...context.repo(),
+        state: 'all',
+        per_page: 100
+    })) {
+        pullRequests = pullRequests.concat(response.data);
+    }
+
+    return pullRequests;
+}
+
 const regenerateOverview = async (context: Context<"issues.assigned" | "issue_comment.created" | "issues.reopened">) => {
 //     const previousWeekMonday = moment().subtract(1, 'weeks').startOf('isoWeek')
 //     const latePreviousWeekMonday = moment().subtract(2, 'weeks').startOf('isoWeek')
@@ -768,16 +782,16 @@ export = (app: Probot) => {
 
                             if (!issue.prId) {
                                 // Check if this issue is mentioned in a PR comments
-                                const prComments = await context.octokit.pulls.list({
-                                    ...context.repo(),
-                                    state: 'all'
-                                })
-                                const found = await Promise.all(prComments.data.map(async (pr) => {
-                                    const comments = await context.octokit.issues.listComments({
-                                        ...context.repo(),
-                                        issue_number: pr.number
-                                    })
-                                    const found = comments.data.find(c => c.body.includes(`#${context.payload.issue.number}`))
+                                const prComments = await getAllPullRequests(context)
+                                const found = await Promise.all(prComments.map(async (pr) => {
+                                    let found = pr?.body?.includes(`#${context.payload.issue.number}`)
+                                    if (!found) {
+                                        const comments = await context.octokit.issues.listComments({
+                                            ...context.repo(),
+                                            issue_number: pr.number
+                                        })
+                                        found = comments?.data?.find(c => c.body?.includes(`#${context.payload.issue.number}`))
+                                    }
                                     return found ? [pr.number, pr.created_at, pr.updated_at] : undefined
                                 }))
                                 if (found?.filter(i => !!i)?.[0]) {
