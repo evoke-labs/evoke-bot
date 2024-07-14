@@ -406,7 +406,7 @@ const checkAndHandlePointRevaluationNeededLabel = async (
             githubId: context.payload.issue.id,
         },
     });
-    if (!issue) await reCreateIssue(context as any);
+    if (!issue?.id) await reCreateIssue(context as any);
     const pointAllocations = await prisma.pointAllocation.findMany({
         where: {
             issueId: issue.id,
@@ -440,7 +440,7 @@ const handleAssignees = async (context: Context<"issues.assigned" | "issues.unas
             githubId: context.payload.issue.id,
         },
     });
-    if (!issue) await reCreateIssue(context as any);
+    if (!issue?.id) await reCreateIssue(context as any);
 
     const existingPoint = await prisma.pointAllocation.findFirst({
         where: {
@@ -558,7 +558,7 @@ export = (app: Probot) => {
                 githubId: context.payload.issue.id,
             },
         });
-        if (!issue) await reCreateIssue(context as any);
+        if (!issue?.id) await reCreateIssue(context as any);
         const pointAllocations = await prisma.pointAllocation.findMany({
             where: {
                 issueId: issue.id,
@@ -751,7 +751,7 @@ export = (app: Probot) => {
                             githubId: context.payload.issue.id,
                         },
                     });
-                    if (!issue) await reCreateIssue(context as any);
+                    if (!issue?.id) await reCreateIssue(context as any);
                     switch (parts[2]) {
                         case "allocate":
                             if (!checkIfCommenterIsAdmin(context)) {
