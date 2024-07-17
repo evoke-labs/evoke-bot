@@ -898,14 +898,15 @@ export = (app: Probot) => {
                                         id: existingPoint.id
                                     },
                                     data: {
-                                        points: existingPoint.points + pointsRequested,
+                                        points: BigInt(pointsRequested),
                                         requestedBy: context.payload.comment.user.login,
+                                        approvedBy: null
                                     },
                                 });
                             } else {
                                 await prisma.pointAllocation.create({
                                     data: {
-                                        points: pointsRequested,
+                                        points: BigInt(pointsRequested),
                                         type,
                                         issueId: issue.id,
                                         requestedBy: context.payload.comment.user.login,
