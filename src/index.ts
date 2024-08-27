@@ -109,7 +109,7 @@ const labelsWithColors = [
     },
 ];
 
-const adminUsers = ["Chathu94", "KrishEvoke", "KrishnaWanusha", "DasiniSumanaweera", "elroshanr"];
+const adminUsers = ["Chathu94", "KrishEvoke", "KrishnaWanusha", "DasiniSumanaweera", "elroshanr", "MadusankaRuwan"];
 
 const reCreateLabels = async (context: Context) => {
     const labels = await context.octokit.issues.listLabelsForRepo(context.repo());
