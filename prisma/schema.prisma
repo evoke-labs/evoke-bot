@@ -20,35 +20,36 @@ enum PointAllocationType {
   Readablilty
   RND
   DevTesting
+  Merge
   Other
 }
 
 model PointAllocation {
-  id BigInt @id @default(autoincrement())
+  id          BigInt              @id @default(autoincrement())
   requestedBy String?
   allocatedTo String?
-  approvedBy String?
-  rejectedBy String?
-  type PointAllocationType
-  points BigInt
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  approvedAt DateTime?
-  rejectedAt DateTime?
-  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  issueId BigInt
+  approvedBy  String?
+  rejectedBy  String?
+  type        PointAllocationType
+  points      BigInt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+  issue       Issue               @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  issueId     BigInt
 }
 
 model Issue {
-  id BigInt @id @default(autoincrement())
-  githubId BigInt @unique
-  assigneeId BigInt?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               BigInt            @id @default(autoincrement())
+  githubId         BigInt            @unique
+  assigneeId       BigInt?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   pointAllocations PointAllocation[]
-  pr BigInt?
-  prDate DateTime?
-  cardId BigInt?
-  closed Boolean? @default(false)
-  closedAt DateTime?
+  pr               BigInt?
+  prDate           DateTime?
+  cardId           BigInt?
+  closed           Boolean?          @default(false)
+  closedAt         DateTime?
 }

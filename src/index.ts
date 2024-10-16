@@ -111,6 +111,8 @@ const labelsWithColors = [
 
 const adminUsers = ["Chathu94", "KrishEvoke", "KrishnaWanusha", "DasiniSumanaweera", "elroshanr", "MadusankaRuwan"];
 
+const MERGE_POINTS_PERCENTAGE = 1/2
+
 const reCreateLabels = async (context: Context) => {
     const labels = await context.octokit.issues.listLabelsForRepo(context.repo());
     const labelNames = labels.data.map((label) => label.name);
@@ -825,6 +827,27 @@ export = (app: Probot) => {
                                     }
                                 })
                             }
+                            if (!type || type === PointAllocationType.Assignee) {
+                                const merge = await prisma.pointAllocation.findFirst({
+                                    where: {
+                                        issueId: issue.id,
+                                        type: PointAllocationType.Merge
+                                    }
+                                })
+                                if (merge) {
+                                    await prisma.pointAllocation.update({
+                                        where: {
+                                            id: merge.id
+                                        },
+                                        data: {
+                                            points: BigInt(Math.round(points * MERGE_POINTS_PERCENTAGE)),
+                                            approvedAt: new Date(),
+                                            allocatedTo: merge.allocatedTo,
+                                            approvedBy: merge.approvedBy,
+                                        },
+                                    });
+                                }
+                            }
 
                             if (existingPoint) {
                                 await prisma.pointAllocation.update({
@@ -850,8 +873,6 @@ export = (app: Probot) => {
                                     },
                                 });
                             }
-
-
                             await checkAndHandlePointRevaluationNeededLabel(context);
                             await comment(
                                 context,
@@ -1109,6 +1130,96 @@ ${pointAllocations
         // });
         // await context.octokit.issues.createComment(issueComment);
     });
+    app.on("pull_request.closed", async (context) => {
+        try {
+            const pr = context.payload.pull_request
+            if (pr.merged) {
+                const { data: comments } = await context.octokit.issues.listComments({
+                    ...context.repo(),
+                    issue_number: pr.number,
+                })
+
+                const issueReferences = []
+                const issueRegex = /#(\d+)/g;
+                comments.forEach((comment) => {
+                    let match;
+                    while ((match = issueRegex.exec(comment.body)) !== null) {
+                        issueReferences.push(match[1])
+                    }
+                })
+
+                if (issueReferences.length > 0) {
+                    for (const issueNumber of issueReferences) {
+                        const githubIssue = await context.octokit.issues.get({
+                            ...context.repo(),
+                            issue_number: Number(issueNumber),
+                        })
+                        const issue = await prisma.issue.findFirst({
+                            where: {
+                                githubId: githubIssue.data?.id
+                            }
+                        })
+                        const [existingPoint, assignee] = await Promise.all([
+                            prisma.pointAllocation.findFirst({
+                                where: {
+                                    type: PointAllocationType.Merge,
+                                    issueId: issue.id,
+                                },
+                            }),
+                            prisma.pointAllocation.findFirst({
+                                where: {
+                                    type: PointAllocationType.Assignee,
+                                    issueId: issue.id,
+                                },
+                            }),
+                        ])
+                        if (existingPoint) {
+                            await prisma.pointAllocation.update({
+                                where: {
+                                    id: existingPoint.id
+                                },
+                                data: {
+                                    points: BigInt(assignee?.points ? Math.round(Number(assignee.points)/2) : 0),
+                                    approvedAt: new Date(),
+                                    allocatedTo: pr.merged_by ? pr.merged_by?.login : null,
+                                    approvedBy: 'System',
+                                },
+                            })
+                        } else {
+                            await prisma.pointAllocation.create({
+                                data: {
+                                    points: BigInt(assignee?.points ? Math.round(Number(assignee.points)/2) : 0),
+                                    type: PointAllocationType.Merge,
+                                    issueId: issue.id,
+                                    approvedAt: new Date(),
+                                    allocatedTo: pr.merged_by ? pr.merged_by?.login : null,
+                                    approvedBy: 'System',
+                                },
+                            })
+                        }
+                        const generatedContext = {
+                            payload: {
+                                issue: {
+                                    id: githubIssue.data.id,
+                                    title: githubIssue.data.title,
+                                    body: githubIssue.data.body,
+                                },
+                            },
+                            octokit: context.octokit,
+                            repo: context.repo(),
+                            issue: () => ({
+                                issue_number: githubIssue.data?.number,
+                                ...context.repo()
+                            }),
+                        }
+                        await generateIssueOverview(generatedContext)
+                    }
+                }
+            }
+        } catch (e: any) {
+            await comment(context, commandErrorWithMarkdown(e.message));
+        }
+    })
     // For more information on building apps:
     // https://probot.github.io/docs/
 
